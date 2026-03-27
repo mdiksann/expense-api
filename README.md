@@ -16,22 +16,21 @@ A RESTful API for personal expense tracking with JWT-based authentication, built
   - [Health Check](#health-check)
   - [Auth](#auth)
   - [Expenses](#expenses)
-- [Request & Response Examples](#request--response-examples)
-- [Error Handling](#error-handling)
+- [Validation & Error Handling](#validation--error-handling)
 - [Postman Collection](#postman-collection)
 
 ---
 
 ## Features
 
-- User registration and login with hashed passwords (bcrypt, 12 salt rounds)
-- JWT authentication with configurable expiry
-- Full CRUD for expenses, scoped per authenticated user
-- Expense filtering by date range: past week, past month, last 3 months, or custom range
-- Input validation with Zod (structured error messages)
-- Security hardening via Helmet HTTP headers
-- Protection against user enumeration attacks (timing-safe login)
-- Cascade deletion: removing an account deletes all associated expenses
+- JWT authentication for signup/login flows
+- Per-user expense data isolation (users can access only their own expenses)
+- Expense CRUD endpoints with category/date validation
+- Date filtering for expenses: `past_week`, `past_month`, `last_3_months`, or `custom`
+- Input validation with Zod for auth, expenses, and query filters
+- Security hardening with Helmet and CORS support
+- Password hashing with bcrypt (`12` salt rounds)
+- Cascade delete from `User` to related `Expense` records
 
 ---
 
@@ -44,38 +43,41 @@ A RESTful API for personal expense tracking with JWT-based authentication, built
 | ORM | Prisma 5 |
 | Database | PostgreSQL |
 | Authentication | JSON Web Tokens (`jsonwebtoken`) |
-| Password Hashing | bcryptjs |
-| Validation | Zod |
-| Security Headers | Helmet |
-| Dev Server | Nodemon |
+| Password Hashing | `bcryptjs` |
+| Validation | `zod` |
+| Security | `helmet`, `cors` |
+| Environment Config | `dotenv` |
+| Dev Server | `nodemon` |
 
 ---
 
 ## Project Structure
 
-```
+```text
 expense-api/
-├── server.js                        # Entry point
+├── server.js                           # App entry point
 ├── prisma/
-│   ├── schema.prisma                # Database schema
-│   └── migrations/                  # Migration history
-└── src/
-    ├── app.js                       # Express app setup
-    ├── config/
-    │   └── prisma.js                # Prisma client instance
-    ├── controllers/
-    │   ├── auth.controller.js       # Signup & login logic
-    │   └── expense.controller.js    # Expense CRUD logic
-    ├── middlewares/
-    │   ├── auth.middleware.js       # JWT verification
-    │   └── errorHandler.middleware.js
-    ├── routes/
-    │   ├── index.js                 # Route aggregator
-    │   ├── auth.routes.js
-    │   └── expense.routes.js
-    └── validators/
-        ├── auth.validators.js
-        └── expense.validators.js
+│   ├── schema.prisma                   # Prisma models + enum
+│   └── migrations/                     # Migration history
+├── src/
+│   ├── app.js                          # Express app setup + middleware
+│   ├── config/
+│   │   └── prisma.js                   # Prisma client singleton
+│   ├── controllers/
+│   │   ├── auth.controller.js          # Signup/login handlers
+│   │   └── expense.controller.js       # Expense CRUD handlers
+│   ├── middlewares/
+│   │   ├── auth.middleware.js          # JWT auth guard
+│   │   └── errorHandler.middleware.js  # Central error handling
+│   ├── routes/
+│   │   ├── index.js                    # Route aggregator (/auth, /expenses)
+│   │   ├── auth.routes.js
+│   │   └── expense.routes.js
+│   └── validators/
+│       ├── auth.validators.js
+│       └── expense.validators.js
+├── expense-api.postman_collection.json
+└── .env.example
 ```
 
 ---
@@ -85,85 +87,74 @@ expense-api/
 ### Prerequisites
 
 - Node.js 18+
-- PostgreSQL instance (local or hosted)
+- PostgreSQL (local or hosted)
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone <repo-url>
 cd expense-api
-
-# Install dependencies
 npm install
-
-# Set up environment variables
 cp .env.example .env
-# Edit .env with your values (see Environment Variables below)
+```
 
-# Run database migrations
+Update `.env` values, then run:
+
+```bash
 npm run db:migrate
-
-# Start the development server
 npm run dev
 ```
 
-The server starts at `http://localhost:3000` by default.
+The server runs on `http://localhost:3000` by default.
 
 ---
 
 ## Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in project root:
 
 ```env
-PORT=3000
 NODE_ENV=development
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
-JWT_SECRET=your_super_secret_key_here
-JWT_EXPIRES_IN=7d
+PORT=3000
+DATABASE_URL="postgresql://postgres:password@localhost:5432/expense_tracker"
+JWT_SECRET="change-this-to-a-long-random-secret-in-production"
+JWT_EXPIRES_IN="7d"
 ```
 
 | Variable | Required | Description |
 |---|---|---|
-| `PORT` | No | Server port (default: `3000`) |
-| `NODE_ENV` | No | Environment label (`development`, `production`) |
+| `NODE_ENV` | No | Runtime mode (`development`/`production`) |
+| `PORT` | No | API port (default `3000`) |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | Secret key for signing JWTs |
-| `JWT_EXPIRES_IN` | No | JWT expiry duration (default: `7d`) |
-
-Generate a secure `JWT_SECRET`:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-```
+| `JWT_SECRET` | Yes | Secret key used to sign JWT tokens |
+| `JWT_EXPIRES_IN` | No | Token expiry duration (default `7d`) |
 
 ---
 
 ## Database Setup
 
 ```bash
-# Apply migrations and generate Prisma client
+# Apply migrations (dev) and regenerate Prisma client
 npm run db:migrate
 
-# Regenerate Prisma client (after schema changes without migration)
+# Generate Prisma client only
 npm run db:generate
 
-# Open Prisma Studio (GUI for browsing data)
+# Prisma Studio
 npm run db:studio
 ```
 
-### Schema Overview
+### Prisma Schema Overview
 
 **User**
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | String (CUID) | Primary key |
-| `name` | String | |
+| `name` | String | Required |
 | `email` | String | Unique |
 | `password` | String | bcrypt hash |
-| `createdAt` | DateTime | Auto-set on create |
+| `createdAt` | DateTime | Auto-set |
 | `updatedAt` | DateTime | Auto-updated |
 
 **Expense**
@@ -171,16 +162,18 @@ npm run db:studio
 | Field | Type | Notes |
 |---|---|---|
 | `id` | String (CUID) | Primary key |
-| `title` | String | |
-| `amount` | Float | Must be positive |
-| `category` | Category (enum) | See values below |
-| `date` | DateTime | |
+| `title` | String | Required |
+| `amount` | Float | Positive |
+| `category` | Enum | See `Category` values |
+| `date` | DateTime | Required |
 | `description` | String? | Optional |
-| `userId` | String | FK → User (cascade delete) |
-| `createdAt` | DateTime | Auto-set on create |
+| `userId` | String | FK to `User` (cascade delete) |
+| `createdAt` | DateTime | Auto-set |
 | `updatedAt` | DateTime | Auto-updated |
 
-**Category enum:** `FOOD` `TRANSPORT` `ENTERTAINMENT` `HEALTH` `UTILITIES` `OTHER`
+**Category enum**
+
+`FOOD`, `TRANSPORT`, `ENTERTAINMENT`, `HEALTH`, `UTILITIES`, `OTHER`
 
 ---
 
@@ -188,17 +181,14 @@ npm run db:studio
 
 **Base URL:** `http://localhost:3000`
 
-All protected routes require an `Authorization: Bearer <token>` header.
-
----
+Routes are mounted under `/api`, except health check.
 
 ### Health Check
 
 #### `GET /health`
 
-Returns server status. No authentication required.
+Response `200`:
 
-**Response `200`**
 ```json
 {
   "status": "ok",
@@ -206,23 +196,20 @@ Returns server status. No authentication required.
 }
 ```
 
----
-
 ### Auth
 
 #### `POST /api/auth/signup`
 
-Register a new user account.
-
-**Request Body**
+Request body:
 
 | Field | Type | Rules |
 |---|---|---|
-| `name` | string | 2–50 characters |
-| `email` | string | Valid email format |
-| `password` | string | Min 8 chars, ≥1 uppercase letter, ≥1 digit |
+| `name` | string | 2-50 chars |
+| `email` | string | Valid email |
+| `password` | string | Min 8 chars, at least 1 uppercase, at least 1 number |
 
-**Response `201`**
+Response `201`:
+
 ```json
 {
   "message": "Account created successfully.",
@@ -236,22 +223,19 @@ Register a new user account.
 }
 ```
 
-**Errors:** `400` Validation error · `409` Email already registered
-
----
+Possible errors: `400` validation error, `409` email already exists.
 
 #### `POST /api/auth/login`
 
-Authenticate with email and password.
-
-**Request Body**
+Request body:
 
 | Field | Type | Rules |
 |---|---|---|
-| `email` | string | Valid email format |
-| `password` | string | Non-empty |
+| `email` | string | Valid email |
+| `password` | string | Required |
 
-**Response `200`**
+Response `200`:
+
 ```json
 {
   "message": "Logged in successfully.",
@@ -264,37 +248,34 @@ Authenticate with email and password.
 }
 ```
 
-**Errors:** `400` Validation error · `401` Invalid email or password
-
----
+Possible errors: `400` validation error, `401` invalid credentials.
 
 ### Expenses
 
-All expense endpoints require authentication (`Authorization: Bearer <token>`).
+All expense endpoints require:
 
----
+`Authorization: Bearer <token>`
 
 #### `GET /api/expenses`
 
-Retrieve all expenses for the authenticated user. Supports optional date filtering.
+Optional query params:
 
-**Query Parameters**
-
-| Parameter | Type | Description |
+| Param | Type | Notes |
 |---|---|---|
-| `filter` | string | `past_week`, `past_month`, `last_3_months`, `custom` |
-| `startDate` | date string | Required when `filter=custom` |
-| `endDate` | date string | Required when `filter=custom` |
+| `filter` | string | `past_week` \| `past_month` \| `last_3_months` \| `custom` |
+| `startDate` | date | Required when `filter=custom` |
+| `endDate` | date | Required when `filter=custom` |
 
-**Response `200`**
+Response `200`:
+
 ```json
 {
-  "count": 2,
+  "count": 1,
   "expenses": [
     {
       "id": "clxyz...",
       "title": "Lunch",
-      "amount": 12.50,
+      "amount": 12.5,
       "category": "FOOD",
       "date": "2026-03-07T00:00:00.000Z",
       "description": "Burger and fries",
@@ -306,145 +287,90 @@ Retrieve all expenses for the authenticated user. Supports optional date filteri
 }
 ```
 
----
-
 #### `POST /api/expenses`
 
-Create a new expense.
-
-**Request Body**
+Request body:
 
 | Field | Type | Rules |
 |---|---|---|
-| `title` | string | 1–100 characters, required |
-| `amount` | number | Positive number, required |
-| `category` | string | Enum value, required |
-| `date` | date string | Valid date, required |
-| `description` | string | Max 500 characters, optional |
+| `title` | string | 1-100 chars |
+| `amount` | number | Positive |
+| `category` | string | One of enum values |
+| `date` | date string | Valid date |
+| `description` | string | Optional, max 500 chars |
 
-**Response `201`**
+Response `201`:
+
 ```json
 {
   "message": "Expense created successfully.",
-  "expense": { ...expense object }
+  "expense": { "...": "..." }
 }
 ```
-
----
 
 #### `GET /api/expenses/:id`
 
-Get a single expense by ID.
+Response `200`:
 
-**Response `200`**
 ```json
 {
-  "expense": { ...expense object }
+  "expense": { "...": "..." }
 }
 ```
 
-**Errors:** `404` Expense not found
-
----
+Possible error: `404` expense not found.
 
 #### `PUT /api/expenses/:id`
 
-Update an existing expense. All fields are optional (partial update).
+Partial update allowed (all fields optional).
 
-**Request Body** — same fields as `POST /api/expenses`, all optional.
+Response `200`:
 
-**Response `200`**
 ```json
 {
   "message": "Expense updated successfully.",
-  "expense": { ...expense object }
+  "expense": { "...": "..." }
 }
 ```
 
-**Errors:** `400` Validation error · `404` Expense not found
-
----
+Possible errors: `400` validation error, `404` expense not found.
 
 #### `DELETE /api/expenses/:id`
 
-Delete an expense.
+Response `200`:
 
-**Response `200`**
 ```json
 {
   "message": "Expense deleted successfully."
 }
 ```
 
-**Errors:** `404` Expense not found
+Possible error: `404` expense not found.
 
 ---
 
-## Request & Response Examples
+## Validation & Error Handling
 
-### Sign up
+Validation uses Zod schemas in `src/validators`.
 
-```bash
-curl -X POST http://localhost:3000/api/auth/signup \
-  -H "Content-Type: application/json" \
-  -d '{"name":"John Doe","email":"john@example.com","password":"Secret123"}'
-```
+Validation errors return `400`:
 
-### Create an expense
-
-```bash
-curl -X POST http://localhost:3000/api/expenses \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{
-    "title": "Groceries",
-    "amount": 45.00,
-    "category": "FOOD",
-    "date": "2026-03-08",
-    "description": "Weekly grocery run"
-  }'
-```
-
-### Filter expenses by date range
-
-```bash
-# Built-in preset
-curl "http://localhost:3000/api/expenses?filter=past_week" \
-  -H "Authorization: Bearer <token>"
-
-# Custom range
-curl "http://localhost:3000/api/expenses?filter=custom&startDate=2026-02-01&endDate=2026-02-28" \
-  -H "Authorization: Bearer <token>"
-```
-
----
-
-## Error Handling
-
-All errors follow a consistent shape:
-
-**Validation error (`400`)**
 ```json
 {
   "message": "Validation error",
   "errors": [
-    { "field": "email", "message": "Invalid email address" },
-    { "field": "password", "message": "Password must contain at least one uppercase letter" }
+    { "field": "email", "message": "Invalid email address" }
   ]
 }
 ```
 
-**General error**
-```json
-{
-  "message": "Expense not found."
-}
-```
+Authentication middleware returns `401` for missing/invalid/expired tokens.
 
-**Authentication error (`401`)**
+General errors follow:
+
 ```json
 {
-  "message": "Token has expired. Please log in again."
+  "message": "Internal server error"
 }
 ```
 
@@ -452,16 +378,18 @@ All errors follow a consistent shape:
 
 ## Postman Collection
 
-A ready-to-use Postman collection is included at `expense-api.postman_collection.json`.
+Import `expense-api.postman_collection.json` into Postman.
 
-**Collection variables:**
+Use collection variables:
 
 | Variable | Description |
 |---|---|
 | `baseUrl` | API base URL (default: `http://localhost:3000`) |
-| `token` | JWT — auto-saved after signup or login |
-| `expenseId` | Expense ID — auto-saved after creating an expense |
+| `token` | JWT token |
+| `expenseId` | Expense ID for update/delete requests |
 
-Import the collection into Postman, then run **Signup** or **Login** first to automatically populate the `token` variable for all subsequent requests.
+Run signup/login first to set token for authenticated endpoints.
 
-https://roadmap.sh/projects/expense-tracker-api
+---
+
+Project source: https://roadmap.sh/projects/expense-tracker-api
